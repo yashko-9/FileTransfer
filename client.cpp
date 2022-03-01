@@ -2,6 +2,7 @@
 #include <netdb.h>
 #include <netinet/in.h>
 #include <cstring>
+#include <fstream>
 
 
 void listFiles(int sockID){
@@ -26,22 +27,70 @@ void uploadFile(int sockID, const char* filename){
     const uint32_t sizeOfCommand = 6;
     const char* command = "upload";
     const uint32_t fileNameLength = strlen(filename);
+    uint64_t fileSize;
+    uint8_t responseStatus;
+
+    std::ifstream file(filename);
+    file.seekg(0, file.end);
+    fileSize = file.tellg();
+    file.seekg(0, file.beg);
+
+    // Client request
     send(sockID, &sizeOfCommand, sizeof(sizeOfCommand), 0);
     send(sockID, command, sizeOfCommand, 0);
     send(sockID, &fileNameLength, sizeof(fileNameLength), 0);
     send(sockID, filename, fileNameLength, 0);
+    send(sockID, &fileSize, sizeof(fileSize), 0);
 
+    // Server response
+    recv(sockID, &responseStatus, sizeof(responseStatus), 0);
+
+    // Client response
+    if(responseStatus == 1){
+        std::cout << "OK" << std::endl;
+
+        if(file.is_open())
+        {
+            char* buffer = new char[fileSize];
+            file.read(buffer, fileSize);
+
+            send(sockID, buffer, fileSize, 0);
+
+            delete [] buffer;
+        }
+    }
+    else if(responseStatus == 2){
+        std::cout << "File with the same name exists" << std::endl;
+    }
+    else if(responseStatus == 3){
+        std::cout << "File too big" << std::endl;
+    }
 }
 
 void deleteFile(int sockID, const char* filename){
     const uint32_t sizeOfCommand = 6;
     const char* command = "delete";
     const uint32_t fileNameLength = strlen(filename);
+    uint8_t responseStatus;
+
+    // Client request
     send(sockID, &sizeOfCommand, sizeof(sizeOfCommand), 0);
     send(sockID, command, sizeOfCommand, 0);
     send(sockID, &fileNameLength, sizeof(fileNameLength), 0);
     send(sockID, filename, fileNameLength, 0);
+
+    // Server response
+    recv(sockID, &responseStatus, sizeof(responseStatus), 0);
     
+    if(responseStatus == 1){
+        std::cout << "OK" << std::endl;
+    }
+    else if(responseStatus == 2){
+        std::cout << "File not found" << std::endl;
+    }
+    else if(responseStatus == 3){
+        std::cout << "Authentication failed" << std::endl;
+    }
 }
 
 void send(int sockID){
@@ -58,7 +107,7 @@ void send(int sockID){
         if(strcmp(command, "list") == 0){
             listFiles(sockID);
         }
-        else if (filename != NULL){
+        else if(filename != NULL){
             if(strcmp(command, "get") == 0){
                 getFile(sockID, filename);
             }
@@ -94,7 +143,7 @@ int main(){
         return -1;
     }
     
-    std::cout << "Connection successful" << std::endl;
+    std::cout << "Connected to the server." << std::endl;
     
     send(sockID);
     
